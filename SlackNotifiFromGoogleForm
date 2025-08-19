@@ -1,3 +1,7 @@
+/*
+*各Googleフォームからの送信時にSlackに通知が飛ぶよう設定されたGASです。
+*以前耜田さんが作ってくださったGasをもとに、7~8行目、29~30行目、35行目、55行目をGoogleフォームなどに合わせて編集しています。
+*/
 
 function onFormSubmit(e) {
   const spreadsheetId = "175fSP3oYkuxmIP2ZckZUrQj_Y7FIi32kQcMBLKZRzFw"; //各GoogleスプレッドシートのIDに変更
@@ -119,3 +123,4 @@ function onFormSubmit(e) {
     Logger.log(`Slack通知失敗: ${e}`);
   }
 }
+
