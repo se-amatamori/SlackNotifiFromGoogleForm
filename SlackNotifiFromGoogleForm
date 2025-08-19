@@ -1,0 +1,121 @@
+
+function onFormSubmit(e) {
+  const spreadsheetId = "175fSP3oYkuxmIP2ZckZUrQj_Y7FIi32kQcMBLKZRzFw"; //各GoogleスプレッドシートのIDに変更
+  const sheetName = "フォームの回答 1";  //各Googleスプレッドシートのシート名に変更
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  const sheet = spreadsheet.getSheetByName(sheetName);
+
+  if (!sheet || sheet.getName() !== sheetName) {
+    Logger.log(`シートが見つからない、または名称不一致: ${sheet ? sheet.getName() : "null"}`);
+    return;
+  }
+
+  // 回答データ取得
+  let responses;
+  if (e && e.values) {
+    responses = e.values;
+    Logger.log("フォーム送信による本番データで処理");
+  } else {
+    Logger.log("テストモード：最終行の回答データを使用");
+    const lastRow = sheet.getLastRow();
+    responses = sheet.getRange(lastRow, 1, 1, sheet.getLastColumn()).getValues()[0];
+  }
+
+  // ヘッダー取得（1行目の質問項目欄）
+  const headers = sheet.getRange(1, 1, 1, responses.length).getValues()[0];  // Slackに表示される項目（行、列）を指定
+  const excludeHeaders = ["タイムスタンプ", "メールアドレス", "完了チェック"];　// 表示しない項目は、主に[タイムスタンプ]と[メールアドレス]、[完了チェック]の３つ
+
+  // Slack blocks 構築
+  const blocks = [];
+
+  // ✅ タイトル（メンションあり、各フォームのリクエスト名にそれぞれ変えています）
+  const messageHeader = "<!subteam^S0963QYNZ0W>\n*GitLabから定期通知するマジリク確認通知の変更についての依頼フォームが届きました*"; //各通知名に合わせて変更
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: messageHeader
+    }
+  });
+
+  blocks.push({ type: "divider" });
+
+  // 回答項目をblockに追加
+  for (let i = 0; i < headers.length; i++) {
+    const header = headers[i];
+    if (excludeHeaders.includes(header)) continue;
+
+    let value = responses[i] || "";
+
+   // 「期限日」も日付の項目名に合わせて一部変更
+    if (header === "期限日" && Object.prototype.toString.call(value) === "[object Date]") {
+      value = Utilities.formatDate(new Date(value), "Asia/Tokyo", "yyyy/MM/dd");
+    } else if (Object.prototype.toString.call(value) === "[object Date]") {
+      value = Utilities.formatDate(new Date(value), "Asia/Tokyo", "yyyy年MM月dd日 HH:mm:ss");
+    }
+
+    blocks.push({
+      type: "section",
+      fields: [
+        {
+          type: "mrkdwn",
+          text: `*${header}*`
+        },
+        {
+          type: "mrkdwn",
+          text: `${value || "（未記入）"}`
+        }
+      ]
+    });
+  
+
+  // スプレッドシートへのリンク付きボタン
+  const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit?gid=12107963#gid=12107963`;
+  blocks.push({
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "詳細はこちら",
+          emoji: true
+        },
+        url: sheetUrl,
+        style: "primary"
+      }
+    ]
+  });
+
+  // Webhook送信
+  const properties = PropertiesService.getScriptProperties();
+  const webhookUrl = properties.getProperty('SLACK_WEBHOOK_URL');
+
+  if (!webhookUrl) {
+    Logger.log("SlackのWebhook URLが設定されていません。");
+    return;
+  }
+
+  const payload = JSON.stringify({ blocks });
+
+  const options = {
+    method: "POST",
+    contentType: "application/json",
+    payload: payload,
+    muteHttpExceptions: true
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(webhookUrl, options);
+    const code = response.getResponseCode();
+    const content = response.getContentText();
+
+    if (code === 200) {
+      Logger.log("Slackへの通知が成功しました。");
+    } else {
+      Logger.log(`Slack API エラー（${code}）：${content}`);
+    }
+  } catch (e) {
+    Logger.log(`Slack通知失敗: ${e}`);
+  }
+}
